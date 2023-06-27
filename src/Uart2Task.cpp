@@ -6,13 +6,26 @@ void Uart2Task::setup(){
 
 void Uart2Task::loop(){
 
-  int len=0;
+  int len=0,i=0;
   char buff[BUFFER_SIZE];
-  len=Serial2.read(buff,BUFFER_SIZE);
+  //len=Serial2.read(buff,1);
+  len=Serial2.readBytesUntil('0xAA',buff,BUFFER_SIZE);
+//   if (len>0 && buff[0]==0xAA){
+//      do {
+//      i++;   
+//      vTaskDelay(pdTICKS_TO_MS(10));
+//      Serial2.read(buff+i,1); 
+//      } while (buff[i]!=0x0A);
+//      len=i+1;
+//   }else{
+//     Serial2.flush(false);g
+//     len=0;
+//     buff[0]=0;
+//   }
   uint8_t cnt;
   bool valid=false;
   if (len>0){
-  valid = buff[0]==0xAA && buff[1]>1 && buff[len-1]==0x0A;
+  valid = buff[0]==0xAA && buff[1]>1;
   
     lock();
     if (valid){
@@ -24,6 +37,7 @@ void Uart2Task::loop(){
                 Serial.println("Error Read status!");            
                 break;
             }
+            lock();
             Serial.println("Check System Settings");        
             Serial.print("Trained:");
              switch (buff[3]){
@@ -149,7 +163,7 @@ void Uart2Task::loop(){
                  Serial.println(buff[7],HEX);        
                  break;
              }
-             
+             unlock();
         break;
          case '\x01':
             if (buff[1]!=0xD) {
@@ -178,36 +192,87 @@ void Uart2Task::loop(){
         cnt=buff[3];
         Serial.println(cnt,HEX);    
         for (int j=0;j<cnt;j++){
-            Serial.printf("R %02d:%s\n",buff[4+j*2],buff[4+j*2+1]==0?"TR":buff[4+j*2+1]==1?"UT":"ERR");
+            Serial.printf("R %02d:%s\n",buff[4+j*2],buff[4+j*2+1]==0?"UT":buff[4+j*2+1]==1?"TR":"ERR");
         }
         break;
 
-        case '\x03':
+        case 3:
         Serial.print("Signature of one Record #");    
-        cnt=buff[3];
-        Serial.print(cnt,DEC);    
+        Serial.print(buff[3],DEC);    
+        Serial.print(" Lsig=");
+        cnt=buff[4];
+        Serial.print(cnt,DEC);
+        Serial.print(" Lmes=");
+        Serial.print(buff[1]);
+        Serial.print(" ");
+        
         for (int j=0;j<cnt;j++){
-            Serial.print(buff[j]);    
+            Serial.print(buff[j+5]);    
         }
         Serial.println("");
         break;
-        
+        case '\x10':
+           if (buff[3]==0) {
+            Serial.println("System Settings restored!");        
+           }
+        break;    
         case '\x12':
-            Serial.print("Mode updated.");        
+            Serial.println("Mode updated.");        
             // switch (buff[3]){
             //     case 0:
-            //     Serial.println("Pulse");        
+            //     Serial.println("Pulse.");        
             //     break;
             //     case 1:
-            //     Serial.println("Flip");        
+            //     Serial.println("Flip.");        
             //     break;
             //     case 2:
-            //     Serial.println("Up");        
+            //     Serial.println("Up.");        
             //     break;
             //     case 3:
-            //     Serial.println("Down");        
+            //     Serial.println("Down.");        
             //     break;
             // }
+        break;
+         case '\x13':
+            Serial.println("Pulse period updated.");        
+            // switch (buff[3]){
+            //     case 0:
+            //     Serial.println("Pulse.");        
+            //     break;
+            //     case 1:
+            //     Serial.println("Flip.");        
+            //     break;
+            //     case 2:
+            //     Serial.println("Up.");        
+            //     break;
+            //     case 3:
+            //     Serial.println("Down.");        
+            //     break;
+            // }
+        break;
+
+        case '\x0A':
+            Serial.println("Tutta");
+            switch (buff[10]){
+                case 'n':
+                 Serial.println("Speak now");
+                break;
+                case 'a':
+                Serial.println("Speak again");
+                break;
+                case 's':
+                Serial.print("Record ");
+                Serial.print(buff[3],DEC);
+                Serial.println(" Success");
+                break;
+            }
+        break;
+        case '\x21':
+            Serial.print("Success records trained:");
+            Serial.println(buff[3],DEC);
+        break;
+        case '\x31':
+            Serial.println("Recogniser cleared");
         break;
         default:
             Serial.println("Other valid command!");            

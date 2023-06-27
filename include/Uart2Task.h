@@ -1,7 +1,7 @@
 #ifndef _UART2TASK_h
 #define _UART2TASK_h
 
-#include "Task.h"
+#include <Task.h>
 
 #define BUFFER_SIZE 1024
 class Uart2Task: public Task{
