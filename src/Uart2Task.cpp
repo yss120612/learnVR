@@ -3,6 +3,9 @@
 void Uart2Task::setup(){
 
 }
+void Uart2Task::cleanup(){
+    
+}
 
 void Uart2Task::loop(){
 
@@ -32,7 +35,7 @@ void Uart2Task::loop(){
     //Serial.println("Valid command!");                    
     switch (buff[2]) 
     {
-        case '\x00':
+        case 0:
             if (buff[1]!=8) {
                 Serial.println("Error Read status!");            
                 break;
@@ -165,7 +168,7 @@ void Uart2Task::loop(){
              }
              unlock();
         break;
-         case '\x01':
+         case 1:
             if (buff[1]!=0xD) {
                 Serial.println("Error check recogniser!");            
                 break;
@@ -186,7 +189,7 @@ void Uart2Task::loop(){
             Serial.println(buff[13],HEX);  
             break;
 
-        case '\x02':
+        case 2:
         Serial.println("Check Record train status");        
         Serial.print("Trained recirds:");    
         cnt=buff[3];
@@ -199,17 +202,17 @@ void Uart2Task::loop(){
         case 3:
         Serial.print("Signature of one Record #");    
         Serial.print(buff[3],DEC);    
-        Serial.print(" Lsig=");
+        Serial.print(" Lenngth=");
         cnt=buff[4];
         Serial.print(cnt,DEC);
-        Serial.print(" Lmes=");
-        Serial.print(buff[1]);
+        //Serial.print(" Lmes=");
+        // Serial.print(buff[1]);
         Serial.print(" ");
-        
-        for (int j=0;j<cnt;j++){
-            Serial.print(buff[j+5]);    
-        }
-        Serial.println("");
+        buff[cnt+5]=0;
+        //for (int j=0;j<cnt;j++){
+        //    Serial.print(buff[j+5]);    
+        //}
+        Serial.println((char *)buff+5);
         break;
         case '\x10':
            if (buff[3]==0) {
@@ -235,24 +238,40 @@ void Uart2Task::loop(){
         break;
          case '\x13':
             Serial.println("Pulse period updated.");        
-            // switch (buff[3]){
-            //     case 0:
-            //     Serial.println("Pulse.");        
-            //     break;
-            //     case 1:
-            //     Serial.println("Flip.");        
-            //     break;
-            //     case 2:
-            //     Serial.println("Up.");        
-            //     break;
-            //     case 3:
-            //     Serial.println("Down.");        
-            //     break;
-            // }
+            
+        break;
+        case '\x15':
+            /*
+            Set Power On Auto Load (15)
+            Use this command to enable or disable "Power On Auto Load" function.
+            | AA| 05+n | 15 | 00 |BITMAP | R0 | ... | Rn | 0A | (set auto load)
+
+            BITMAP Record bitmap:
+            ● 00 -- zero record, disable auto load
+            ● 01 -- one record
+            ● 03 -- two records
+            ● 07 -- three records
+            ● 0F -- four records
+            ● 1F -- five records
+            ● 3F -- six record
+            ● 7F -- seven records
+            R0~Rn Record
+            */
+            if (buff[4]==0){
+                Serial.println("AutoLoad DISABLED");
+            }else{
+                Serial.println("AutoLoad ENABLED");
+                for (i=0;i<buff[1]-4;i++)
+                {
+                    Serial.print(i,DEC);
+                    Serial.print(":");
+                    Serial.println(buff[5+i],DEC);
+                }
+            }
         break;
 
         case '\x0A':
-            Serial.println("Tutta");
+            
             switch (buff[10]){
                 case 'n':
                  Serial.println("Speak now");
@@ -268,12 +287,106 @@ void Uart2Task::loop(){
             }
         break;
         case '\x21':
-            Serial.print("Success records trained:");
-            Serial.println(buff[3],DEC);
+            Serial.print("Success records trained N:");
+            Serial.print(buff[3],DEC);
+            Serial.print(" RECORD:");
+            Serial.println(buff[4],DEC);
+        break;
+        case '\x30':
+        /*
+        | AA| 3+2n | 30 | N | R0 | STA0 | ... | Rn | STAn | 0A |
+        R0~Rn Voice Record index
+        STA0~STAn Load result
+            ● 00 -- Success
+            ● FF -- Record value out of range
+            ● FE -- Record untrained
+            ● FD -- Recognizer full
+            ● FC -- Record already in recognizer
+            N Number of successful training voice commands
+        */
+        Serial.print("Records processed:");
+        Serial.println(buff[3]);           
+        for (i=0;i<buff[3];i++){
+            Serial.print("Record ");
+            Serial.print(buff[4+i*2],DEC);
+            Serial.print(":");
+            Serial.println(buff[5+i*2],HEX);
+        }
         break;
         case '\x31':
             Serial.println("Recogniser cleared");
         break;
+        case '\x32':
+        
+        if (buff[1]==3){
+            Serial.println("Group selected");
+        }
+        else{
+            Serial.print("Group is ");
+            Serial.println(buff[5],DEC);
+        }
+        
+        break;
+        case '\xFF':
+        /*
+        | AA | 03 | FF | ECODE | 0A |
+        ECODE error code
+            ● FF -- command undefined
+            ● FE -- command length error
+            ● FD -- data error
+            ● FC -- subcommand error
+            ● FB -- command usage error
+        */
+           Serial.print("ERROR: ");
+        switch (buff[3]){
+            case 0xFB:
+            Serial.println("command usage error");
+            break;
+            case 0xFC:
+            Serial.println("subcommand error");
+            break;
+            case 0xFD:
+            Serial.println("data error");
+            break;
+            case 0xFE:
+            Serial.println("command length error");
+            break;
+            case 0xFF:
+            Serial.println("command undefined");
+            break;
+            default:
+            Serial.println("other error");
+            break;
+        }
+        break;
+        case 0x0D:
+           /*
+           Voice Recognized (0D)
+           | AA | 07 | 0D | 00 | GRPM | R | RI | SIGLEN | SIG | 0A |
+            GRPM Group mode indicate
+                ● FF: not in group mode
+                ● 00~0A: system group mode
+                ● 80~87: user group mode
+            R record which is recognized.
+            RI recognizer index value for recognized record.
+            SIGLEN signature length of the recognized record, 0 means on signature, on SIG area
+            SIG signature content
+            */ 
+        Serial.print("Group mode:");    
+        Serial.println(buff[4],HEX);
+        Serial.print("Record which is recognized:");
+        Serial.println(buff[5],HEX);
+        Serial.print("Recognizer index:");
+        Serial.println(buff[6],HEX);
+        Serial.print("Description:");
+        if (buff[7]>0){
+            buff[8+buff[7]]=0;   
+            Serial.println((char *)buff+8);
+        }else{
+            Serial.println("NONE");
+        }
+
+break;
         default:
             Serial.println("Other valid command!");            
             printBuff(buff,len);
@@ -308,6 +421,3 @@ void Uart2Task::printBuff(char * buff, uint16_t length){
 
 }
 
-void Uart2Task::cleanup(){
-    
-}
